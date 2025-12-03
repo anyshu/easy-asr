@@ -86,7 +86,17 @@ git clone https://github.com/anyshu/easy-asr.git
 cd easy-asr
 ```
 
-### 2. 准备模型文件
+### 2. 下载 WASM 运行时文件
+
+项目需要 sherpa-onnx WASM 运行时文件，请从以下地址下载：
+
+🔗 **下载地址**：[https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data](https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data)
+
+下载 `sherpa-onnx-wasm-main-asr.data` 文件并放入项目根目录。
+
+> 💡 **注意**：项目中已包含 `sherpa-onnx-wasm-main-asr.js` 和 `sherpa-onnx-wasm-main-asr.wasm`，只需下载 `.data` 文件。
+
+### 3. 准备模型文件
 
 将以下模型文件放入项目根目录或 `assets/` 文件夹：
 
@@ -118,26 +128,28 @@ punct-ct-transformer.onnx
 punct-ct-transformer-tokens.json
 ```
 
-> 💡 **模型下载**：请参考 [sherpa-onnx 模型仓库](https://github.com/k2-fsa/sherpa-onnx/releases) 下载对应的模型文件。
+> 💡 **模型下载**：
+> - **WASM 运行时**：[Hugging Face - sherpa-onnx-wasm-main-asr.data](https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data)
+> - **识别模型**：[sherpa-onnx 模型仓库](https://github.com/k2-fsa/sherpa-onnx/releases) 下载对应的模型文件
 
-### 3. 启动本地服务器
+### 4. 启动本地服务器
 
 由于 WebAssembly 的跨域限制，需要通过 HTTP 服务器访问：
 
 ```bash
-# 使用 Python
-python -m http.server 8000
+# 使用 Python（推荐）
+python -m http.server 28000
 
 # 或使用 Node.js
-npx serve .
+npx serve -p 28000 .
 
 # 或使用 PHP
-php -S localhost:8000
+php -S localhost:28000
 ```
 
-### 4. 访问应用
+### 5. 访问应用
 
-打开浏览器访问：`http://localhost:8000`
+打开浏览器访问：`http://localhost:28000`
 
 ---
 
@@ -276,18 +288,24 @@ navigator.gpu !== undefined  // 应该返回 true
 
 ```
 easy-asr/
-├── index.html                    # 主页面
-├── app-asr.js                    # 主应用逻辑
-├── sherpa-onnx-asr.js           # sherpa-onnx API 封装
-├── sherpa-onnx-vad.js           # VAD 相关逻辑
-├── sherpa-onnx-wasm-main-asr.js # WASM 运行时
-├── sherpa-onnx-wasm-main-asr.wasm
-├── sherpa-onnx-wasm-main-asr.data
-├── offline-worker.js            # SenseVoice WASM Worker
-├── sense-voice-ort-worker.js    # SenseVoice WebGPU Worker
-├── service-worker.js            # PWA 离线支持
+├── index.html                       # 主页面
+├── app-asr.js                       # 主应用逻辑
+├── sherpa-onnx-asr.js              # sherpa-onnx API 封装
+├── sherpa-onnx-vad.js              # VAD 相关逻辑
+├── sherpa-onnx-wasm-main-asr.js    # WASM 运行时 JS
+├── sherpa-onnx-wasm-main-asr.wasm  # WASM 运行时二进制
+├── sherpa-onnx-wasm-main-asr.data  # ⬇️ 需下载：WASM 运行时数据
+├── offline-worker.js               # SenseVoice WASM Worker
+├── sense-voice-ort-worker.js       # SenseVoice WebGPU Worker
+├── service-worker.js               # PWA 离线支持
+├── encoder.onnx                     # ⬇️ 需下载：在线模型文件
+├── decoder.onnx                     # ⬇️ 需下载：在线模型文件
+├── joiner.onnx                      # ⬇️ 需下载：在线模型文件
+├── tokens.txt                       # ⬇️ 需下载：词表文件
 └── README.md
 ```
+
+> 📥 标记 **⬇️** 的文件需要额外下载
 
 ---
 
@@ -377,10 +395,34 @@ const resolvedOnlineModelPaths = {
 - 浏览器内存不足（关闭其他标签页）
 - GPU 被其他程序占用（关闭其他 GPU 密集型应用）
 
+### WASM 运行时文件缺失？
+
+**症状**：浏览器控制台报错 `Failed to load sherpa-onnx-wasm-main-asr.data`
+
+**解决方法**：
+
+1. **下载 WASM 运行时数据文件**
+   - 访问：https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data
+   - 下载 `sherpa-onnx-wasm-main-asr.data` 文件
+   - 放入项目根目录（与 `index.html` 同级）
+
+2. **确认文件完整性**
+   - 文件大小应该在 10-50 MB 左右
+   - 文件名必须是 `sherpa-onnx-wasm-main-asr.data`（不能改名）
+
+3. **检查文件权限**
+   ```bash
+   # 确保文件可读
+   ls -lh sherpa-onnx-wasm-main-asr.data
+   ```
+
 ### 模型文件找不到？
 
 **确保文件名正确**：
 ```
+必需（WASM 运行时）：
+✓ sherpa-onnx-wasm-main-asr.data  ← 从 Hugging Face 下载
+
 必需（在线识别）：
 ✓ encoder.onnx
 ✓ decoder.onnx  
@@ -393,8 +435,8 @@ Two-Pass（离线增强）：
 ```
 
 **检查文件位置**：
-- 可以放在项目根目录
-- 或放在 `assets/` 文件夹（需修改配置）
+- 所有文件应放在项目根目录
+- 或放在 `assets/` 文件夹（需修改配置路径）
 
 **查看加载状态**：
 打开控制台，启动应用时会显示：
