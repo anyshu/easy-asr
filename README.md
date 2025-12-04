@@ -57,15 +57,17 @@ Easy ASR 是一个纯浏览器端的实时语音识别应用，无需服务器�
 
 #### 3. VAD（Voice Activity Detection）
 
-| 模式 | 描述 |
-|------|------|
-| **Auto** | 自动选择可用的 VAD 引擎 |
-| **Silero** | 快速轻量的 VAD 模型 |
-| **TEN** | 更高精度的 VAD 模型 |
+| 模式 | 描述 | 采样率支持 |
+|------|------|------------|
+| **Auto** | 自动选择可用的 VAD 引擎 | - |
+| **Silero v5** | 快速轻量的 VAD 模型 | 16kHz / 8kHz |
+| **TEN** | 更高精度的 VAD 模型 | 16kHz |
 
 **文件要求**：
-- Silero: `silero_vad.onnx`
+- Silero v5: `silero_vad.onnx` ([下载地址](https://k2-fsa.github.io/sherpa/onnx/vad/silero-vad.html))
 - TEN: `ten-vad.onnx`
+
+> 💡 **Silero VAD v5** 支持 16kHz 和 8kHz 采样率，兼容性更好，推荐使用。
 
 #### 4. 标点恢复（Punctuation）
 
@@ -92,9 +94,10 @@ cd easy-asr
 
 🔗 **下载地址**：[https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data](https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data)
 
-下载 `sherpa-onnx-wasm-main-asr.data` 文件并放入项目根目录。
+下载 `sherpa-onnx-wasm-main-asr-xxxx.data` 文件（其中 xxxx 为版本号），**重命名为** `sherpa-onnx-wasm-main-asr.data` 后放入项目根目录。
 
-> 💡 **注意**：项目中已包含 `sherpa-onnx-wasm-main-asr.js` 和 `sherpa-onnx-wasm-main-asr.wasm`，只需下载 `.data` 文件。
+> 💡 **注意**：
+> - **必须重命名**：下载的文件名可能包含版本号（如 `sherpa-onnx-wasm-main-asr-1.10.30.data`），需改名为 `sherpa-onnx-wasm-main-asr.data`
 
 ### 3. 准备模型文件
 
@@ -119,9 +122,9 @@ paraformer-tokens.txt
 second-pass-sense-voice.onnx  # 或 second-pass-sense-voice.int8.onnx
 second-pass-tokens.txt
 
-# VAD 模型
-silero_vad.onnx
-ten-vad.onnx
+# VAD 模型（语音活动检测）
+silero_vad.onnx  # Silero v5，支持 16kHz/8kHz
+ten-vad.onnx     # TEN VAD，仅支持 16kHz
 
 # 标点恢复
 punct-ct-transformer.onnx
@@ -131,6 +134,7 @@ punct-ct-transformer-tokens.json
 > 💡 **模型下载**：
 > - **WASM 运行时**：[Hugging Face - sherpa-onnx-wasm-main-asr.data](https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data)
 > - **识别模型**：[sherpa-onnx 模型仓库](https://github.com/k2-fsa/sherpa-onnx/releases) 下载对应的模型文件
+> - **Silero VAD v5**：[官方下载页面](https://k2-fsa.github.io/sherpa/onnx/vad/silero-vad.html)
 
 ### 4. 启动本地服务器
 
@@ -158,7 +162,10 @@ php -S localhost:28000
 ### 实时识别模式
 
 1. 选择在线模型（Zipformer 或 Paraformer）
-2. 选择 VAD 模式（Auto/Silero/TEN）
+2. 选择 VAD 模式
+   - **Auto**：自动选择（推荐）
+   - **Silero v5**：快速准确，支持 16kHz/8kHz
+   - **TEN**：高精度，仅 16kHz
 3. 点击 **Start Recording** 开始录音
 4. 说话时实时显示识别结果
 5. 点击 **Stop** 结束录音
@@ -249,6 +256,13 @@ const offlineSegmentPolicy = {
   maxBufferAgeMs: 6000  // 静音超时强制切分
 };
 ```
+
+**VAD 模型选择建议**：
+- **Silero v5**：推荐使用，支持 16kHz 和 8kHz 双采样率，速度快，准确率高
+- **TEN**：更高精度，但仅支持 16kHz，处理速度稍慢
+- **Auto**：自动检测可用模型，优先使用 Silero v5
+
+> 📖 **参考文档**：[Silero VAD 官方文档](https://k2-fsa.github.io/sherpa/onnx/vad/silero-vad.html)
 
 ---
 
@@ -403,7 +417,8 @@ const resolvedOnlineModelPaths = {
 
 1. **下载 WASM 运行时数据文件**
    - 访问：https://huggingface.co/anyshu/sherpa-onnx-wasm-main-asr.data
-   - 下载 `sherpa-onnx-wasm-main-asr.data` 文件
+   - 下载 `sherpa-onnx-wasm-main-asr-xxxx.data` 文件（xxxx 为版本号）
+   - **重命名为** `sherpa-onnx-wasm-main-asr.data`
    - 放入项目根目录（与 `index.html` 同级）
 
 2. **确认文件完整性**
@@ -453,12 +468,15 @@ Two-Pass（离线增强）：
 
 1. **启用 Two-Pass**：大幅提升准确率
 2. **选择合适的 VAD 模式**：
-   - Auto: 自动选择
-   - Silero: 快速但可能漏检
-   - TEN: 更准确但稍慢
-3. **调整 VAD 灵敏度**（需修改代码）
-4. **使用质量更好的麦克风**
-5. **减少环境噪音**
+   - **Auto**：自动选择最佳引擎（推荐）
+   - **Silero v5**：平衡速度与准确率，支持多采样率
+   - **TEN**：最高精度，适合安静环境
+3. **确保音频采样率**：
+   - Silero v5 支持 16kHz 和 8kHz
+   - TEN 仅支持 16kHz
+4. **调整 VAD 灵敏度**（需修改代码）
+5. **使用质量更好的麦克风**
+6. **减少环境噪音**
 
 ---
 
