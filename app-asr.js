@@ -167,6 +167,7 @@ const waveformWindowSeconds = 5;
 const waveformMaxPoints = 1200;
 let waveformAnimationHandle = null;
 let waveformActive = false;
+let waveformEnabled = false;
 const waveformFallbackSize = {width: 240, height: 110};
 const supportedFileExtensions =
     [ 'mp3', 'mp4', 'm4a', 'wav', 'aac', 'ogg', 'opus', 'webm', 'flac' ];
@@ -263,7 +264,7 @@ function renderWaveform() {
   }
 }
 function scheduleWaveformRender() {
-  if (!waveformActive) {
+  if (!waveformActive || !waveformEnabled) {
     return;
   }
   if (waveformAnimationHandle) {
@@ -276,7 +277,8 @@ function scheduleWaveformRender() {
   renderWaveform();
 }
 function pushWaveformSamples(samples) {
-  if (!waveformCanvas || !waveformCtx || samples.length === 0) {
+  if (!waveformEnabled || !waveformCanvas || !waveformCtx ||
+      samples.length === 0) {
     return;
   }
   const nowSeconds = getNowSeconds();
@@ -308,7 +310,7 @@ function pushWaveformSamples(samples) {
   scheduleWaveformRender();
 }
 function startWaveformAnimation() {
-  if (!waveformCanvas || !waveformCtx) {
+  if (!waveformEnabled || !waveformCanvas || !waveformCtx) {
     return;
   }
   waveformActive = true;
