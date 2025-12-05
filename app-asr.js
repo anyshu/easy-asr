@@ -3341,256 +3341,287 @@ let isRecording = false;
 let recognizer = null;
 let recognizer_stream = null;
 
-if (navigator.mediaDevices.getUserMedia) {
+async function ensureRecorderReady() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.log('getUserMedia not supported on your browser!');
+    alert('getUserMedia not supported on your browser!');
+    return false;
+  }
+
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new AudioContext({sampleRate : 16000});
+  }
+  if (audioCtx.state === 'suspended') {
+    try {
+      await audioCtx.resume();
+    } catch (err) {
+      console.warn('[ASR] Failed to resume audio context', err);
+    }
+  }
+
+  if (recorder && mediaStream) {
+    return true;
+  }
+
   console.log('getUserMedia supported.');
 
   // see https://w3c.github.io/mediacapture-main/#dom-mediadevices-getusermedia
   const constraints = {audio : true};
 
-  let onSuccess = function(stream) {
-    if (!audioCtx) {
-      audioCtx = new AudioContext({sampleRate : 16000});
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err) {
+    console.log('The following error occured: ' + err);
+    alert('无法访问麦克风，请检查浏览器权限设置。');
+    return false;
+  }
+
+  console.log(audioCtx);
+  recordSampleRate = audioCtx.sampleRate;
+  console.log('sample rate ' + recordSampleRate);
+
+  // creates an audio node from the microphone incoming stream
+  mediaStream = audioCtx.createMediaStreamSource(stream);
+  console.log('media stream', mediaStream);
+
+  // https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/createScriptProcessor
+  // bufferSize: the onaudioprocess event is called when the buffer is full
+  var bufferSize = 4096;
+  var numberOfInputChannels = 1;
+  var numberOfOutputChannels = 2;
+  if (audioCtx.createScriptProcessor) {
+    recorder = audioCtx.createScriptProcessor(
+        bufferSize, numberOfInputChannels, numberOfOutputChannels);
+  } else {
+    recorder = audioCtx.createJavaScriptNode(
+        bufferSize, numberOfInputChannels, numberOfOutputChannels);
+  }
+  console.log('recorder', recorder);
+
+  recorder.onaudioprocess = function(e) {
+    let samples = new Float32Array(e.inputBuffer.getChannelData(0))
+    samples = downsampleBuffer(samples, expectedSampleRate);
+
+    currentSegmentSamples.push(samples);
+    currentSegmentSampleCount += samples.length;
+    pushWaveformSamples(samples);
+
+    if (recognizer_stream == null) {
+      recognizer_stream = recognizer.createStream();
     }
-    console.log(audioCtx);
-    recordSampleRate = audioCtx.sampleRate;
-    console.log('sample rate ' + recordSampleRate);
 
-    // creates an audio node from the microphone incoming stream
-    mediaStream = audioCtx.createMediaStreamSource(stream);
-    console.log('media stream', mediaStream);
-
-    // https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/createScriptProcessor
-    // bufferSize: the onaudioprocess event is called when the buffer is full
-    var bufferSize = 4096;
-    var numberOfInputChannels = 1;
-    var numberOfOutputChannels = 2;
-    if (audioCtx.createScriptProcessor) {
-      recorder = audioCtx.createScriptProcessor(
-          bufferSize, numberOfInputChannels, numberOfOutputChannels);
-    } else {
-      recorder = audioCtx.createJavaScriptNode(
-          bufferSize, numberOfInputChannels, numberOfOutputChannels);
+    recognizer_stream.acceptWaveform(expectedSampleRate, samples);
+    while (recognizer.isReady(recognizer_stream)) {
+      recognizer.decode(recognizer_stream);
     }
-    console.log('recorder', recorder);
 
-    recorder.onaudioprocess = function(e) {
-      let samples = new Float32Array(e.inputBuffer.getChannelData(0))
-      samples = downsampleBuffer(samples, expectedSampleRate);
+    if (vadEnabled) {
+      feedVad(samples);
+    }
 
-      currentSegmentSamples.push(samples);
-      currentSegmentSampleCount += samples.length;
-      pushWaveformSamples(samples);
+    let shouldResetStream = false;
+    if (!vadEnabled) {
+      shouldResetStream = recognizer.isEndpoint(recognizer_stream);
+    }
 
-      if (recognizer_stream == null) {
-        recognizer_stream = recognizer.createStream();
-      }
+    let result = recognizer.getResult(recognizer_stream).text;
 
-      recognizer_stream.acceptWaveform(expectedSampleRate, samples);
+    if (recognizer.config.modelConfig.paraformer.encoder != '') {
+      let tailPaddings = new Float32Array(expectedSampleRate);
+      recognizer_stream.acceptWaveform(expectedSampleRate, tailPaddings);
       while (recognizer.isReady(recognizer_stream)) {
         recognizer.decode(recognizer_stream);
       }
+      result = recognizer.getResult(recognizer_stream).text;
+    }
 
-      if (vadEnabled) {
-        feedVad(samples);
-      }
-
-      let shouldResetStream = false;
-      if (!vadEnabled) {
-        shouldResetStream = recognizer.isEndpoint(recognizer_stream);
-      }
-
-      let result = recognizer.getResult(recognizer_stream).text;
-
-      if (recognizer.config.modelConfig.paraformer.encoder != '') {
-        let tailPaddings = new Float32Array(expectedSampleRate);
-        recognizer_stream.acceptWaveform(expectedSampleRate, tailPaddings);
-        while (recognizer.isReady(recognizer_stream)) {
-          recognizer.decode(recognizer_stream);
-        }
-        result = recognizer.getResult(recognizer_stream).text;
-      }
-
-      // 在调用 setStreamingPreview 之前记录旧文本
-      const previousResult = lastRawResult;
+    // 在调用 setStreamingPreview 之前记录旧文本
+    const previousResult = lastRawResult;
+    
+    if (result.length > 0) {
+      setStreamingPreview(result);
+    }
+    
+    // 检查文本是否真的有变化（即有新的语音输入）
+    const hasNewSpeech = result.length > 0 && result !== previousResult;
+    
+    // 检查是否需要因为静音而换行（无论 VAD 是否启用都要检查）
+    const now = nowMs();
+    const hasPendingText = lastResult.length > 0;  // 只检查是否有文本，不检查音频样本
+    if (hasPendingText && lastSpeechActivityMs !== null) {
+      const silenceDuration = now - lastSpeechActivityMs;
       
-      if (result.length > 0) {
-        setStreamingPreview(result);
+      // 如果有新语音，重置静音计时器
+      if (hasNewSpeech) {
+        lastSpeechActivityMs = now;
+        console.log(`[Silence] New speech detected, resetting silence timer`);
       }
-      
-      // 检查文本是否真的有变化（即有新的语音输入）
-      const hasNewSpeech = result.length > 0 && result !== previousResult;
-      
-      // 检查是否需要因为静音而换行（无论 VAD 是否启用都要检查）
-      const now = nowMs();
-      const hasPendingText = lastResult.length > 0;  // 只检查是否有文本，不检查音频样本
-      if (hasPendingText && lastSpeechActivityMs !== null) {
-        const silenceDuration = now - lastSpeechActivityMs;
-        
-        // 如果有新语音，重置静音计时器
-        if (hasNewSpeech) {
-          lastSpeechActivityMs = now;
-          console.log(`[Silence] New speech detected, resetting silence timer`);
+      // 如果静音超过阈值，触发换行（无论 VAD 是否启用都要检查）
+      else if (silenceDuration >= silenceParagraphThresholdMs) {
+        console.log(`[Silence] ⚠️ Triggering paragraph break after ${(silenceDuration / 1000).toFixed(1)}s silence (VAD: ${vadEnabled ? 'enabled' : 'disabled'})`);
+        flushCurrentSegment({reason: 'silence'});
+        if (recognizer_stream) {
+          recognizer.reset(recognizer_stream);
         }
-        // 如果静音超过阈值，触发换行（只触发一次）
-        else if (silenceDuration >= silenceParagraphThresholdMs) {
-          console.log(`[Silence] ⚠️ Triggering paragraph break after ${(silenceDuration / 1000).toFixed(1)}s silence (VAD: ${vadEnabled ? 'enabled' : 'disabled'})`);
-          flushCurrentSegment({reason: 'silence'});
-          if (recognizer_stream) {
-            recognizer.reset(recognizer_stream);
-          }
-          shouldResetStream = false;  // 已经处理过了
-          // 触发后重置时间戳到很久之后，防止立即再次触发
-          lastSpeechActivityMs = now;
-        }
-        // 定期打印静音时长（每秒一次）
-        else if (Math.floor(silenceDuration / 1000) !== Math.floor((silenceDuration - 100) / 1000)) {
-          console.log(`[Silence] Silent for ${(silenceDuration / 1000).toFixed(1)}s (threshold: ${silenceParagraphThresholdMs / 1000}s, VAD: ${vadEnabled ? 'on' : 'off'})`);
-        }
+        shouldResetStream = false;  // 已经处理过了
+        // 触发后重置时间戳到很久之后，防止立即再次触发
+        lastSpeechActivityMs = now;
       }
-
-      if (!vadEnabled && shouldResetStream) {
-        flushCurrentSegment();
-        recognizer.reset(recognizer_stream);
+      // 定期打印静音时长（每秒一次）
+      else if (Math.floor(silenceDuration / 1000) !== Math.floor((silenceDuration - 100) / 1000)) {
+        console.log(`[Silence] Silent for ${(silenceDuration / 1000).toFixed(1)}s (threshold: ${silenceParagraphThresholdMs / 1000}s, VAD: ${vadEnabled ? 'on' : 'off'})`);
       }
+    }
 
-      refreshTranscript();
+    if (!vadEnabled && shouldResetStream) {
+      flushCurrentSegment();
+      recognizer.reset(recognizer_stream);
+    }
 
-      let buf = new Int16Array(samples.length);
-      for (var i = 0; i < samples.length; ++i) {
-        let s = samples[i];
-        if (s >= 1)
-          s = 1;
-        else if (s <= -1)
-          s = -1;
+    refreshTranscript();
 
-        samples[i] = s;
-        buf[i] = s * 32767;
-      }
+    let buf = new Int16Array(samples.length);
+    for (var i = 0; i < samples.length; ++i) {
+      let s = samples[i];
+      if (s >= 1)
+        s = 1;
+      else if (s <= -1)
+        s = -1;
 
-      leftchannel.push(buf);
-      recordingLength += bufferSize;
-    };
+      samples[i] = s;
+      buf[i] = s * 32767;
+    }
 
-    startBtn.onclick = function() {
-      resetSegmentSamples();
-      pendingSegmentCarry = null;
-      resetStreamingPreview();
-      resetVadDetectors();
-      lastSpeechActivityMs = nowMs();  // 初始化语音活动时间
-      vadSegmentsSinceBreak = 0;
-      mediaStream.connect(recorder);
-      recorder.connect(audioCtx.destination);
-      startWaveformAnimation();
-
-      console.log('recorder started');
-
-      stopBtn.disabled = false;
-      startBtn.disabled = true;
-      isRecording = true;
-    };
-
-    stopBtn.onclick = function() {
-      console.log('recorder stopped');
-      isRecording = false;
-
-      // stopBtn recording
-      recorder.disconnect(audioCtx.destination);
-      mediaStream.disconnect(recorder);
-      stopWaveformAnimation({clear: true});
-
-      startBtn.style.background = '';
-      startBtn.style.color = '';
-      // mediaRecorder.requestData();
-
-      stopBtn.disabled = true;
-      startBtn.disabled = false;
-
-      if (recognizer_stream != null) {
-        if (recognizer.config.modelConfig.paraformer &&
-            recognizer.config.modelConfig.paraformer.encoder != '') {
-          const tailPaddings = new Float32Array(expectedSampleRate);
-          recognizer_stream.acceptWaveform(expectedSampleRate, tailPaddings);
-          while (recognizer.isReady(recognizer_stream)) {
-            recognizer.decode(recognizer_stream);
-          }
-        }
-
-        recognizer_stream.inputFinished();
-        while (recognizer.isReady(recognizer_stream)) {
-          recognizer.decode(recognizer_stream);
-        }
-
-        const finalText = recognizer.getResult(recognizer_stream).text;
-        if (finalText.length > 0) {
-          setStreamingPreview(finalText);
-        }
-      }
-
-      flushVadDetector();
-
-      if (recognizer_stream != null) {
-        flushCurrentSegment({force: true, reason: 'stop'});
-        recognizer.reset(recognizer_stream);
-      } else {
-        flushCurrentSegment({force: true, reason: 'stop'});
-      }
-
-      resetVadDetectors();
-      refreshTranscript();
-
-      var clipName = new Date().toISOString();
-
-      const clipContainer = document.createElement('article');
-      const clipLabel = document.createElement('p');
-      const audio = document.createElement('audio');
-      const deleteButton = document.createElement('button');
-      clipContainer.classList.add('clip');
-      audio.setAttribute('controls', '');
-      deleteButton.textContent = 'Delete';
-      deleteButton.className = 'delete';
-
-      clipLabel.textContent = clipName;
-
-      clipContainer.appendChild(audio);
-
-      clipContainer.appendChild(clipLabel);
-      clipContainer.appendChild(deleteButton);
-      soundClips.appendChild(clipContainer);
-
-      audio.controls = true;
-      let samples = flatten(leftchannel);
-      const blob = toWav(samples);
-
-      leftchannel = [];
-      const audioURL = window.URL.createObjectURL(blob);
-      audio.src = audioURL;
-      console.log('recorder stopped');
-
-      deleteButton.onclick = function(e) {
-        let evtTgt = e.target;
-        evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
-      };
-
-      clipLabel.onclick = function() {
-        const existingName = clipLabel.textContent;
-        const newClipName = prompt('Enter a new name for your sound clip?');
-        if (newClipName === null) {
-          clipLabel.textContent = existingName;
-        } else {
-          clipLabel.textContent = newClipName;
-        }
-      };
-    };
+    leftchannel.push(buf);
+    recordingLength += bufferSize;
   };
 
-  let onError = function(
-      err) { console.log('The following error occured: ' + err); };
-
-  navigator.mediaDevices.getUserMedia(constraints).then(onSuccess, onError);
-} else {
-  console.log('getUserMedia not supported on your browser!');
-  alert('getUserMedia not supported on your browser!');
+  return true;
 }
+
+async function startRecording() {
+  if (isRecording) {
+    return;
+  }
+  const ready = await ensureRecorderReady();
+  if (!ready || !recorder || !mediaStream) {
+    return;
+  }
+
+  resetSegmentSamples();
+  pendingSegmentCarry = null;
+  resetStreamingPreview();
+  resetVadDetectors();
+  lastSpeechActivityMs = nowMs();  // 初始化语音活动时间
+  vadSegmentsSinceBreak = 0;
+  mediaStream.connect(recorder);
+  recorder.connect(audioCtx.destination);
+  startWaveformAnimation();
+
+  console.log('recorder started');
+
+  stopBtn.disabled = false;
+  startBtn.disabled = true;
+  isRecording = true;
+}
+
+function stopRecording() {
+  if (!recorder || !mediaStream) {
+    return;
+  }
+  console.log('recorder stopped');
+  isRecording = false;
+
+  recorder.disconnect(audioCtx.destination);
+  mediaStream.disconnect(recorder);
+  stopWaveformAnimation({clear: true});
+
+  startBtn.style.background = '';
+  startBtn.style.color = '';
+
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+
+  if (recognizer_stream != null) {
+    if (recognizer.config.modelConfig.paraformer &&
+        recognizer.config.modelConfig.paraformer.encoder != '') {
+      const tailPaddings = new Float32Array(expectedSampleRate);
+      recognizer_stream.acceptWaveform(expectedSampleRate, tailPaddings);
+      while (recognizer.isReady(recognizer_stream)) {
+        recognizer.decode(recognizer_stream);
+      }
+    }
+
+    recognizer_stream.inputFinished();
+    while (recognizer.isReady(recognizer_stream)) {
+      recognizer.decode(recognizer_stream);
+    }
+
+    const finalText = recognizer.getResult(recognizer_stream).text;
+    if (finalText.length > 0) {
+      setStreamingPreview(finalText);
+    }
+  }
+
+  flushVadDetector();
+
+  if (recognizer_stream != null) {
+    flushCurrentSegment({force: true, reason: 'stop'});
+    recognizer.reset(recognizer_stream);
+  } else {
+    flushCurrentSegment({force: true, reason: 'stop'});
+  }
+
+  resetVadDetectors();
+  refreshTranscript();
+
+  var clipName = new Date().toISOString();
+
+  const clipContainer = document.createElement('article');
+  const clipLabel = document.createElement('p');
+  const audio = document.createElement('audio');
+  const deleteButton = document.createElement('button');
+  clipContainer.classList.add('clip');
+  audio.setAttribute('controls', '');
+  deleteButton.textContent = 'Delete';
+  deleteButton.className = 'delete';
+
+  clipLabel.textContent = clipName;
+
+  clipContainer.appendChild(audio);
+
+  clipContainer.appendChild(clipLabel);
+  clipContainer.appendChild(deleteButton);
+  soundClips.appendChild(clipContainer);
+
+  audio.controls = true;
+  let samples = flatten(leftchannel);
+  const blob = toWav(samples);
+
+  leftchannel = [];
+  const audioURL = window.URL.createObjectURL(blob);
+  audio.src = audioURL;
+  console.log('recorder stopped');
+
+  deleteButton.onclick = function(e) {
+    let evtTgt = e.target;
+    evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
+  };
+
+  clipLabel.onclick = function() {
+    const existingName = clipLabel.textContent;
+    const newClipName = prompt('Enter a new name for your sound clip?');
+    if (newClipName === null) {
+      clipLabel.textContent = existingName;
+    } else {
+      clipLabel.textContent = newClipName;
+    }
+  };
+}
+
+startBtn.onclick = startRecording;
+stopBtn.onclick = stopRecording;
 
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('beforeunload', () => {
