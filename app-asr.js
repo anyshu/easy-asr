@@ -33,6 +33,8 @@ const clipboardAvailable = typeof navigator !== 'undefined' &&
     navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
 let activeWorkspaceTab = 'realtime';
 const saveRecordingToggle = document.getElementById('saveRecordingToggle');
+const mobileNoticeMask = document.getElementById('mobileNoticeMask');
+const mobileNoticeClose = document.getElementById('mobileNoticeClose');
 
 let lastResult = '';
 let lastRawResult = '';
@@ -1109,12 +1111,33 @@ function truncateStatusMessage(message, maxLen = 48) {
   return `${message.slice(0, maxLen - 1)}…`;
 }
 
+function isMobileDevice() {
+  const uaData = navigator.userAgentData;
+  if (uaData && typeof uaData.mobile === 'boolean') {
+    return uaData.mobile;
+  }
+  const ua = navigator.userAgent || '';
+  return /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(ua);
+}
+
+function setupMobileNotice() {
+  if (!mobileNoticeMask || !mobileNoticeClose) {
+    return;
+  }
+  const hide = () => mobileNoticeMask.classList.remove('show');
+  mobileNoticeClose.addEventListener('click', hide);
+  if (isMobileDevice()) {
+    mobileNoticeMask.classList.add('show');
+  }
+}
+
 function bootstrapWorkspaceUi() {
   const init = () => {
     try {
       setupWorkspaceTabs();
       setupFileUploadUi();
       setupVadControls();
+      setupMobileNotice();
     } catch (err) {
       console.error('[Workspace] Failed to init tabs/upload UI', err);
     }
