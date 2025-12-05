@@ -32,6 +32,7 @@ let fileEmptyHint = document.getElementById('fileEmptyHint');
 const clipboardAvailable = typeof navigator !== 'undefined' &&
     navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
 let activeWorkspaceTab = 'realtime';
+const saveRecordingToggle = document.getElementById('saveRecordingToggle');
 
 let lastResult = '';
 let lastRawResult = '';
@@ -3400,6 +3401,8 @@ async function ensureRecorderReady() {
   console.log('recorder', recorder);
 
   recorder.onaudioprocess = function(e) {
+    const shouldKeepAudio =
+        !!(saveRecordingToggle && saveRecordingToggle.checked);
     let samples = new Float32Array(e.inputBuffer.getChannelData(0))
     samples = downsampleBuffer(samples, expectedSampleRate);
 
@@ -3493,8 +3496,10 @@ async function ensureRecorderReady() {
       buf[i] = s * 32767;
     }
 
-    leftchannel.push(buf);
-    recordingLength += bufferSize;
+    if (shouldKeepAudio) {
+      leftchannel.push(buf);
+      recordingLength += bufferSize;
+    }
   };
 
   return true;
@@ -3509,6 +3514,8 @@ async function startRecording() {
     return;
   }
 
+  leftchannel = [];
+  recordingLength = 0;
   resetSegmentSamples();
   pendingSegmentCarry = null;
   resetStreamingPreview();
@@ -3532,6 +3539,8 @@ function stopRecording() {
   }
   console.log('recorder stopped');
   isRecording = false;
+  const shouldKeepAudio =
+      !!(saveRecordingToggle && saveRecordingToggle.checked);
 
   recorder.disconnect(audioCtx.destination);
   mediaStream.disconnect(recorder);
@@ -3576,48 +3585,52 @@ function stopRecording() {
   resetVadDetectors();
   refreshTranscript();
 
-  var clipName = new Date().toISOString();
+  if (shouldKeepAudio && leftchannel.length > 0) {
+    var clipName = new Date().toISOString();
 
-  const clipContainer = document.createElement('article');
-  const clipLabel = document.createElement('p');
-  const audio = document.createElement('audio');
-  const deleteButton = document.createElement('button');
-  clipContainer.classList.add('clip');
-  audio.setAttribute('controls', '');
-  deleteButton.textContent = 'Delete';
-  deleteButton.className = 'delete';
+    const clipContainer = document.createElement('article');
+    const clipLabel = document.createElement('p');
+    const audio = document.createElement('audio');
+    const deleteButton = document.createElement('button');
+    clipContainer.classList.add('clip');
+    audio.setAttribute('controls', '');
+    deleteButton.textContent = 'Delete';
+    deleteButton.className = 'delete';
 
-  clipLabel.textContent = clipName;
+    clipLabel.textContent = clipName;
 
-  clipContainer.appendChild(audio);
+    clipContainer.appendChild(audio);
 
-  clipContainer.appendChild(clipLabel);
-  clipContainer.appendChild(deleteButton);
-  soundClips.appendChild(clipContainer);
+    clipContainer.appendChild(clipLabel);
+    clipContainer.appendChild(deleteButton);
+    soundClips.appendChild(clipContainer);
 
-  audio.controls = true;
-  let samples = flatten(leftchannel);
-  const blob = toWav(samples);
+    audio.controls = true;
+    let samples = flatten(leftchannel);
+    const blob = toWav(samples);
 
-  leftchannel = [];
-  const audioURL = window.URL.createObjectURL(blob);
-  audio.src = audioURL;
-  console.log('recorder stopped');
+    leftchannel = [];
+    const audioURL = window.URL.createObjectURL(blob);
+    audio.src = audioURL;
+    console.log('recorder stopped');
 
-  deleteButton.onclick = function(e) {
-    let evtTgt = e.target;
-    evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
-  };
+    deleteButton.onclick = function(e) {
+      let evtTgt = e.target;
+      evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
+    };
 
-  clipLabel.onclick = function() {
-    const existingName = clipLabel.textContent;
-    const newClipName = prompt('Enter a new name for your sound clip?');
-    if (newClipName === null) {
-      clipLabel.textContent = existingName;
-    } else {
-      clipLabel.textContent = newClipName;
-    }
-  };
+    clipLabel.onclick = function() {
+      const existingName = clipLabel.textContent;
+      const newClipName = prompt('Enter a new name for your sound clip?');
+      if (newClipName === null) {
+        clipLabel.textContent = existingName;
+      } else {
+        clipLabel.textContent = newClipName;
+      }
+    };
+  } else {
+    leftchannel = [];
+  }
 }
 
 startBtn.onclick = startRecording;

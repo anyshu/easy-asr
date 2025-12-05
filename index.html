@@ -609,6 +609,27 @@
       #sound-clips .clip button:hover {
         background: rgba(255, 68, 68, 0.15);
       }
+      @media (max-width: 900px) {
+        .workspace {
+          flex-direction: column;
+        }
+        .sidebar {
+          width: 100%;
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
+        .main-column {
+          min-height: 50vh;
+        }
+        .transcript-panel,
+        .clips-panel {
+          padding: 16px;
+        }
+        .transcript-panel textarea {
+          min-height: 50vh;
+          font-size: 15px;
+        }
+      }
       .file-sidebar {
         gap: 0;
       }
