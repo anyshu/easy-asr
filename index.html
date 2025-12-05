@@ -358,16 +358,39 @@
   flex: 1;
   min-width: 0;
 }
-.translation-toggle .switch-copy strong {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-.translation-toggle .switch-copy small {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  font-weight: 400;
-}
+    .translation-toggle .switch-copy strong {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .save-toggle {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .save-toggle .switch-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+    .save-toggle .switch-copy strong {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .save-toggle .switch-copy small {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      font-weight: 400;
+    }
+    .translation-toggle .switch-copy small {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      font-weight: 400;
+    }
 .translation-direction {
   display: flex;
   flex-direction: column;
@@ -847,6 +870,16 @@
                 <button id="startBtn" class="btn primary" disabled>Start Recording</button>
                 <button id="stopBtn" class="btn danger" disabled>Stop</button>
                 <button id="clearBtn" class="btn ghost">Clear Transcript</button>
+              </div>
+              <div class="save-toggle">
+                <label class="switch">
+                  <input id="saveRecordingToggle" type="checkbox" />
+                  <span class="slider"></span>
+                </label>
+                <div class="switch-copy">
+                  <strong>保存录音文件</strong>
+                  <small>默认不保留，如需下载请开启</small>
+                </div>
               </div>
             </div>
           </div>
