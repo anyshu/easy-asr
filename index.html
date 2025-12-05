@@ -154,6 +154,31 @@
       .sidebar::-webkit-scrollbar-thumb:hover {
         background: rgba(255, 255, 255, 0.15);
       }
+      .sidebar.collapsed {
+        display: none;
+      }
+      .sidebar-toggle {
+        border: 1px solid var(--border);
+        background: var(--surface-elevated);
+        color: var(--text-primary);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 500;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s ease;
+      }
+      .sidebar-toggle:hover {
+        border-color: var(--border-hover);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .sidebar-toggle[aria-pressed="true"] {
+        background: var(--accent);
+        color: #000;
+        border-color: transparent;
+      }
       .sidebar-section {
         padding: 20px;
         border-bottom: 1px solid var(--border);
@@ -660,6 +685,9 @@
           border-right: none;
           border-bottom: 1px solid var(--border);
         }
+        .sidebar.collapsed {
+          display: none;
+        }
         .main-column {
           min-height: 50vh;
         }
@@ -848,7 +876,7 @@
     </style>
   </head>
   <body>
-    <div class="page">
+      <div class="page">
       <div id="mobileNoticeMask" class="modal-mask" role="dialog" aria-modal="true" aria-labelledby="mobileNoticeTitle" aria-describedby="mobileNoticeBody">
         <div class="modal">
           <h3 id="mobileNoticeTitle">移动端提示</h3>
@@ -864,6 +892,9 @@
           <div class="page-logo">A</div>
           <h1 class="page-title">Speech Console</h1>
         </div>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-pressed="false">
+          Toggle Panel
+        </button>
         <div class="tab-switcher" role="tablist" aria-label="ASR modes">
           <button
             id="tabRealtime"
@@ -896,6 +927,33 @@
         aria-labelledby="tabRealtime"
       >
         <aside class="sidebar">
+          <div class="sidebar-section">
+            <div class="control-card">
+              <div>
+                <p class="panel-title">Audio Capture</p>
+                <p class="panel-hint">Record and transcribe in realtime</p>
+              </div>
+              <div class="waveform-panel">
+                <canvas id="waveformCanvas"></canvas>
+              </div>
+              <div class="control-buttons">
+                <button id="startBtn" class="btn primary" disabled>Start Recording</button>
+                <button id="stopBtn" class="btn danger" disabled>Stop</button>
+                <button id="clearBtn" class="btn ghost">Clear Transcript</button>
+              </div>
+              <div class="save-toggle">
+                <label class="switch">
+                  <input id="saveRecordingToggle" type="checkbox" />
+                  <span class="slider"></span>
+                </label>
+                <div class="switch-copy">
+                  <strong>保存录音文件</strong>
+                  <small>默认不保留，如需下载请开启</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="sidebar-section">
             <h2 class="hero-title">Engine Status</h2>
             <div id="status">Loading...</div>
@@ -931,53 +989,19 @@
           </div>
           
           <div class="sidebar-section">
-            <div class="control-card">
-              <div>
-                <p class="panel-title">Audio Capture</p>
-                <p class="panel-hint">Record and transcribe in realtime</p>
-              </div>
-              <div class="waveform-panel">
-                <canvas id="waveformCanvas"></canvas>
-              </div>
-              <div class="control-buttons">
-                <button id="startBtn" class="btn primary" disabled>Start Recording</button>
-                <button id="stopBtn" class="btn danger" disabled>Stop</button>
-                <button id="clearBtn" class="btn ghost">Clear Transcript</button>
-              </div>
-              <div class="save-toggle">
-                <label class="switch">
-                  <input id="saveRecordingToggle" type="checkbox" />
-                  <span class="slider"></span>
-                </label>
-                <div class="switch-copy">
-                  <strong>保存录音文件</strong>
-                  <small>默认不保留，如需下载请开启</small>
+              <div class="control-card vad-card">
+                <div>
+                  <p class="panel-title">Voice Activity Detection</p>
+                  <p class="panel-hint">Choose detection mode</p>
                 </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="sidebar-section">
-            <div class="control-card vad-card">
-              <div>
-                <p class="panel-title">Voice Activity Detection</p>
-                <p class="panel-hint">Choose detection mode</p>
-              </div>
-              <div class="vad-mode-group" role="radiogroup" aria-label="VAD mode">
-                <label class="radio-pill">
-                  <input type="radio" name="vadMode" value="auto" checked />
-                  <span>
-                    <strong>Auto</strong>
-                    <em>Smart</em>
-                  </span>
-                </label>
-                <label class="radio-pill">
-                  <input type="radio" name="vadMode" value="silero" />
-                  <span>
-                    <strong>Silero</strong>
-                    <em>Fast</em>
-                  </span>
-                </label>
+                <div class="vad-mode-group" role="radiogroup" aria-label="VAD mode">
+                  <label class="radio-pill">
+                    <input type="radio" name="vadMode" value="silero" checked />
+                    <span>
+                      <strong>Silero</strong>
+                      <em>Fast</em>
+                    </span>
+                  </label>
                 <label class="radio-pill">
                   <input type="radio" name="vadMode" value="ten" />
                   <span>

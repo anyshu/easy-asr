@@ -35,6 +35,7 @@ let activeWorkspaceTab = 'realtime';
 const saveRecordingToggle = document.getElementById('saveRecordingToggle');
 const mobileNoticeMask = document.getElementById('mobileNoticeMask');
 const mobileNoticeClose = document.getElementById('mobileNoticeClose');
+const sidebarToggle = document.getElementById('sidebarToggle');
 
 let lastResult = '';
 let lastRawResult = '';
@@ -66,7 +67,7 @@ let vadBuffer = null;
 let vadEnabled = false;
 let vadConfig = null;
 const vadAvailability = {silero : false, ten : false};
-let preferredVadMode = 'auto';
+let preferredVadMode = 'silero';
 let activeVadMode = 'off';
 let punctuationEngine = null;
 let punctuationReady = false;
@@ -1131,6 +1132,23 @@ function setupMobileNotice() {
   }
 }
 
+function setupSidebarToggle() {
+  if (!sidebarToggle) {
+    return;
+  }
+  const sidebars = Array.from(document.querySelectorAll('.sidebar'));
+  const setCollapsed = (collapsed) => {
+    sidebarToggle.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+    sidebars.forEach((sidebar) => {
+      sidebar.classList.toggle('collapsed', collapsed);
+    });
+  };
+  sidebarToggle.addEventListener('click', () => {
+    const collapsed = sidebarToggle.getAttribute('aria-pressed') === 'true';
+    setCollapsed(!collapsed);
+  });
+}
+
 function bootstrapWorkspaceUi() {
   const init = () => {
     try {
@@ -1138,6 +1156,7 @@ function bootstrapWorkspaceUi() {
       setupFileUploadUi();
       setupVadControls();
       setupMobileNotice();
+      setupSidebarToggle();
     } catch (err) {
       console.error('[Workspace] Failed to init tabs/upload UI', err);
     }
@@ -1285,7 +1304,7 @@ function setupVadControls() {
       if (!input.checked) {
         return;
       }
-      preferredVadMode = input.value || 'auto';
+      preferredVadMode = input.value || 'silero';
       if (wasmRuntimeReady) {
         initVadEngine(preferredVadMode, {forceRecreate : true});
       } else {
@@ -2342,10 +2361,10 @@ function ensureValidVadSelection() {
   let checked =
       radios.find((input) => input.checked && input.disabled !== true);
   if (!checked) {
-    const preferenceOrder = [ 'auto', 'ten', 'silero' ];
+    const preferenceOrder = [ 'silero', 'ten' ];
     for (const mode of preferenceOrder) {
       const candidate =
-          radios.find((input) => (input.value || 'auto') === mode &&
+          radios.find((input) => (input.value || 'silero') === mode &&
                                  input.disabled !== true);
       if (candidate) {
         candidate.checked = true;
@@ -2355,7 +2374,7 @@ function ensureValidVadSelection() {
     }
   }
   if (checked) {
-    preferredVadMode = checked.value || 'auto';
+    preferredVadMode = checked.value || 'silero';
   }
 }
 
@@ -2399,22 +2418,13 @@ function syncVadAvailability() {
 }
 
 function resolveVadMode(preference, availability = vadAvailability) {
-  const requested = preference || 'auto';
+  const requested = preference || 'silero';
   if (requested === 'ten') {
     return availability.ten ? 'ten' :
                               (availability.silero ? 'silero' : 'off');
   }
-  if (requested === 'silero') {
-    return availability.silero ? 'silero' :
-                                 (availability.ten ? 'ten' : 'off');
-  }
-  if (availability.ten) {
-    return 'ten';
-  }
-  if (availability.silero) {
-    return 'silero';
-  }
-  return 'off';
+  return availability.silero ? 'silero' :
+                               (availability.ten ? 'ten' : 'off');
 }
 
 function buildVadRuntimeConfig(mode, overrides = {}) {
